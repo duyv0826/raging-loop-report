@@ -9,6 +9,7 @@ import io
 import re
 import glob
 import urllib.parse
+from collections import Counter
 
 FB = '_report_frontback.md'
 MOE = re.compile(r'^(?:https?://)(?:[a-z0-9-]+\.)*moegirl\.(?:org\.cn|tw|com)(/zh-(?:hant|hans|cn|tw))?(/.*)?$')
@@ -40,7 +41,10 @@ def global_list(text):
     i = text.index('## 参考文献')
     j = text.index('\n---\n', i)
     block = text[i:j]
-    items = re.findall(r'^\s*(\d+)\.\s+(.*?)(?=^\s*\d+\.\s+|ZEND)$',
+    k = block.find('未采信／备查来源')
+    if k >= 0:
+        block = block[:k]
+    items = re.findall(r'^\s*(\d+)\.\s+(.*?)(?=^\s*\d+\.\s+|ZEND)',
                        block + 'ZEND', re.M | re.S)
     return [(int(n), ' '.join(s.split())) for n, s in items]
 
@@ -56,7 +60,7 @@ def chapter_data():
         j = text.index('## 存疑与事实冲突说明')
         body = text[:i] + text[j:]
         lst = text[i:j]
-        for u in URL.findall(body):
+        for u in extract_urls(body):
             cited.setdefault(norm(u), set()).add(ch)
         for line in lst.split('\n'):
             if not re.match(r'^\| \d+ \|', line):
@@ -82,9 +86,11 @@ def main():
 
     gmap = {}
     for n, s in gitems:
-        us = [norm(u) for u in URL.findall(s)]
-        assert len(us) == 1, (n, s[:80], us)
-        gmap[us[0]] = (n, s)
+        us = [norm(u) for u in extract_urls(s)]
+        key = us[0] if us else 'NOURL#%d' % n
+        if len(us) > 1:
+            print('MULTI-URL', n, s[:60], us)
+        gmap[key] = (n, s)
 
     out = []
     out.append('全局条目=%d  正文被引 distinct=%d  清单元数据 distinct=%d'
@@ -111,9 +117,26 @@ def main():
         if len(m['raws']) > 1:
             out.append('  %s' % k[:70])
             out += ['     ' + r for r in sorted(m['raws'])]
-    for k in cited:
-        if k.startswith('MOEGIRL') and k not in meta:
-            out.append('  (moegirl 写法仅见于正文/全局，无清单行) %s' % k)
+    out.append('\n## E. 拟定终稿条目（按等级排序）')
+
+    def tier_of(types):
+        for t in types:
+            m = re.search(r'S(\d)', t)
+            if m:
+                return int(m.group(1))
+        return 9
+
+    for k in sorted(cited, key=lambda k: (tier_of(meta.get(k, {}).get('types', [])), k)):
+        m = meta.get(k)
+        if not m:
+            out.append('  [缺元数据] ch%s %s' % (','.join(sorted(cited[k])), k[:90]))
+            continue
+        name = max(sorted(m['names']), key=len)
+        cnt = Counter(m['types'])
+        typ = sorted(cnt, key=lambda t: (-cnt[t], -len(t), t))[0]
+        out.append('  S%d | ch%s | %s | %s | %s' % (tier_of(m['types']),
+                                                    ','.join(sorted(cited[k] | m['ch'])),
+                                                    name[:70], typ[:34], k[:70]))
     io.open('_tools/_refs.txt', 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
     print('written _tools/_refs.txt')
 

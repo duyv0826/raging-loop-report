@@ -17,3 +17,6 @@ $py.class
 # 系统
 .DS_Store
 Thumbs.db
+
+# 脚本临时输出
+_tools/_*.txt
