@@ -2,7 +2,11 @@
 """把前置框架与六章正文装配为单文件终稿。
 
 装配顺序（依前置框架自身的说明）：
-标题 → 跨章口径 → 研究引言 → 目录 → 第1–6章 → 研究结论 → 参考文献
+标题 → 跨章口径 → 研究引言 → 目录 → 第1–6章 → 研究结论 → 参考文献 → 后置附录
+
+后置附录（附：玩家社区声音／附录 A／附录 B）与正文同源，一律取自
+_report_frontback.md 的同名小节：附录只写在终稿里等于没写——重跑本脚本
+即被覆盖。故所有交付文本内容一律改源文件，不改终稿。
 
 丢弃的前置件内部脚手架：框架文档标题、「本文档为 Phase 5 终稿整合用…」说明、
 文末「本框架文档为前置／后置件…」斜体注。装配后跑自检，任何一项不过即不写盘。
@@ -16,7 +20,10 @@ OUT = '终稿_人狼村之谜研究报告.md'
 FB = '_report_frontback.md'
 NL = '\n'
 TITLE = '# 《人狼村之谜》深度研究报告'
-BAN = ('00-conflict-rulings', 'Phase 5', '工作副本', '前置／后置件')
+BAN = ('00-conflict-rulings', 'Phase 5', '工作副本', '前置／后置件', '事实核查报告')
+POST = ('附：玩家社区声音（2026-09，一手自述）',
+        '附录 A　事实核验补充记录（2026-09-30 复核）',
+        '附录 B　30 秒实机自证操作（暴露模式）')
 
 
 def section(text, heading):
@@ -25,6 +32,14 @@ def section(text, heading):
     i = lines.index('## ' + heading)
     j = next(k for k in range(i + 1, len(lines)) if lines[k] == '---')
     return lines[i:j]
+
+
+def tail_section(text, heading):
+    """同 section，但去掉小节末尾紧邻分隔线的空行，避免装配出连续空行。"""
+    lines = section(text, heading)
+    while lines and lines[-1] == '':
+        lines.pop()
+    return lines
 
 
 def main():
@@ -38,8 +53,10 @@ def main():
     for p in sorted(glob.glob('chapters/ch*.md')):
         body = io.open(p, encoding='utf-8').read().rstrip(NL)
         parts += body.split(NL) + ['', '---', '']
-    parts += section(fb, '研究结论') + ['---', '']
-    parts += section(fb, '参考文献')
+    parts += tail_section(fb, '研究结论') + ['---', '']
+    parts += tail_section(fb, '参考文献')
+    for h in POST:
+        parts += ['', '---', ''] + tail_section(fb, h)
     doc = NL.join(parts).rstrip(NL) + NL
 
     # ---- 自检 ----
@@ -49,9 +66,14 @@ def main():
     if [h[:len(w)] for h, w in zip(h1, want)] != want or len(h1) != 6 + 1:
         fails.append('章标题序列不符: %s' % h1)
     order = [doc.index(x) for x in ['## 研究引言', '## 目录', '# 第1章', '# 第6章',
-                                    '## 研究结论', '## 参考文献']]
+                                    '## 研究结论', '## 参考文献'] + ['## ' + h for h in POST]]
     if order != sorted(order):
         fails.append('节序错乱: %s' % order)
+    for h in POST:
+        if doc.count('## ' + h) != 1:
+            fails.append('后置附录缺失或重复: %s（%d 次）' % (h, doc.count('## ' + h)))
+    if doc.rstrip(NL).split(NL)[-1] != '> 说明：若无实机条件，可用 2 张对照截图（普通模式 vs 暴露模式同一段落）替代演示；截图中红色文本框可见即可。':
+        fails.append('终稿未以附录 B 收尾，末行为: %s' % doc.rstrip(NL).split(NL)[-1][:40])
     for b in BAN:
         if b in doc:
             fails.append('残留内部脚手架: %s' % b)
@@ -63,7 +85,9 @@ def main():
     if re.search(r'\bE\d\b', doc):
         fails.append('残留内部证据代号 E<n>')
     tail = doc.split(NL)
-    refs = [l for l in tail[tail.index('## 参考文献'):] if re.match(r'^\d+\. ', l)]
+    refs_end = next(k for k in range(tail.index('## 参考文献'), len(tail))
+                    if k > tail.index('## 参考文献') and tail[k].startswith('## '))
+    refs = [l for l in tail[tail.index('## 参考文献'):refs_end] if re.match(r'^\d+\. ', l)]
     if len(refs) != 49:
         fails.append('参考文献条数 %d != 49' % len(refs))
     src = NL.join(io.open(p, encoding='utf-8').read()

@@ -60,6 +60,12 @@ for p in sorted(glob.glob('chapters/ch*.md')):
            or (l.startswith('### ') and re.match(r'^\d+\.\d+\.\d+', t)):
             real.append(t)
 real += ['研究结论', '参考文献']
+# 后置附录与正文同源，同样受目录一致性约束（标题串与 assemble.py 的 POST 保持一致）
+for h in ('附：玩家社区声音（2026-09，一手自述）',
+          '附录 A　事实核验补充记录（2026-09-30 复核）',
+          '附录 B　30 秒实机自证操作（暴露模式）'):
+    check('## ' + h in fb, '前置框架含后置附录：%s' % h)
+    real.append(h)
 check(toc == real, '目录与真实标题逐条一致（目录=%d 实际=%d）' % (len(toc), len(real)))
 if toc != real:
     out.append('     缺: %s' % [t for t in real if t not in toc])
