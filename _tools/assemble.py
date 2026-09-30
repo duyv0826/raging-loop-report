@@ -12,6 +12,7 @@ _report_frontback.md 的同名小节：附录只写在终稿里等于没写—�
 文末「本框架文档为前置／后置件…」斜体注。装配后跑自检，任何一项不过即不写盘。
 """
 import io
+import os
 import re
 import glob
 import sys
@@ -106,7 +107,31 @@ def main():
         for f in fails:
             print('  -', f)
         sys.exit(1)
-    io.open(OUT, 'w', encoding='utf-8', newline=NL).write(doc)
+    # 自检已过，落盘仍可能中断（磁盘满 / 编码炸 / 后续改坏的源文件触发新 assert），
+    # 故先备份再写：宁可留一个待人工清理的 _backup_prev_*，也不留半截交付稿。
+    backup = None
+    try:
+        if os.path.isfile(OUT):
+            backup = '_tools/_backup_prev_' + OUT
+            with open(OUT, 'rb') as src, open(backup, 'wb') as dst:
+                dst.write(src.read())
+        tmp = OUT + '.tmp'
+        with io.open(tmp, 'w', encoding='utf-8', newline=NL) as f:
+            f.write(doc)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, OUT)
+        if backup and os.path.isfile(backup):
+            os.remove(backup)
+    except Exception as exc:
+        print('WRITE ABORTED, nothing lost:', repr(exc))
+        if backup and os.path.isfile(OUT):
+            with open(backup, 'rb') as src, open(OUT, 'wb') as dst:
+                dst.write(src.read())
+        for stray in (OUT + '.tmp',):
+            if os.path.isfile(stray):
+                os.remove(stray)
+        sys.exit(2)
     print('written %s: %d lines, %d chars' % (OUT, doc.count(NL), len(doc)))
 
 
